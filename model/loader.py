@@ -2,6 +2,7 @@ import torch
 import json
 import os
 from model.utils import generate_timeline_base64, generate_graph_base64
+from torch.serialization import safe_globals
 
 SEQUENCE_FILE = "data/student_sequences.json"
 GRAPH_DIR = "data/pyg_subgraphs"
@@ -21,7 +22,10 @@ def build_sequence_and_metadata(student_id, target_ccss, dok, device):
             "dok": torch.tensor([step["normalized_dok"]], dtype=torch.long, device=device)
         })
 
-    graph = torch.load(os.path.join(GRAPH_DIR, f"{target_ccss}.pt"))
+    safe_globals().update({
+    "torch_geometric.data.data.DataEdgeAttr": __import__("torch_geometric").data.DataEdgeAttr})
+    with safe_globals():
+       graph = torch.load(os.path.join(GRAPH_DIR, f"{step['canonical_ccss']}.pt"), weights_only=False)
     sequence.append({
         "graph": graph.to(device),
         "dok": torch.tensor([dok], dtype=torch.long, device=device)
