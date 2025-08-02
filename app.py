@@ -6,7 +6,10 @@ import torch
 from torch.nn.functional import sigmoid
 from flask_cors import CORS
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=[
+    "http://localhost:3000",  # for local development
+    "https://mathgraphexplorer.netlify.app"  # for deployed frontend
+])
 
 
 # Load model and device once at startup
