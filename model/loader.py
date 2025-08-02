@@ -16,7 +16,8 @@ def build_sequence_and_metadata(student_id, target_ccss, dok, device):
 
     sequence = []
     for step in history_sorted:
-        graph = torch.load(os.path.join(GRAPH_DIR, f"{step['canonical_ccss']}.pt"))
+        graph = torch.load(os.path.join(GRAPH_DIR, f"{step['canonical_ccss']}.pt"), weights_only=False)
+
         sequence.append({
             "graph": graph.to(device),
             "dok": torch.tensor([step["normalized_dok"]], dtype=torch.long, device=device)
