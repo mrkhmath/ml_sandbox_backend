@@ -1,50 +1,37 @@
-# app.py
 from flask import Flask, request, jsonify
-from model.loader import build_sequence_and_metadata
-from model.gin_lstm_model import load_model
-import torch
-from torch.nn.functional import sigmoid
+from model.predict import run_inference
+from utils.graph_viz import render_graph_image
 from flask_cors import CORS
+from utils.graph_json import get_graph_json
+
+
 app = Flask(__name__)
-CORS(app, origins=[
-    "http://localhost:3000",  # for local development
-    "https://mathgraphexplorer.netlify.app"  # for deployed frontend
-])
-
-
-# Load model and device once at startup
-model, device = load_model()
+CORS(app)  # ✅ Allow cross-origin requests from any origin
 
 @app.route("/predict_readiness", methods=["POST"])
-def predict_readiness():
-    data = request.json
+def predict():
+    data = request.get_json()
     student_id = data.get("student_id")
     target_ccss = data.get("target_ccss")
-    dok = int(data.get("dok", 1))
+    normalized_dok = data.get("normalized_dok")
 
-    if not student_id or not target_ccss:
-        return jsonify({"error": "Missing student_id or target_ccss"}), 400
+    if not all([student_id, target_ccss, normalized_dok is not None]):
+        return jsonify({"error": "Missing required fields"}), 400
 
     try:
-        sequence, meta = build_sequence_and_metadata(student_id, target_ccss, dok, device)
+        prediction, probability = run_inference(student_id, target_ccss, normalized_dok)
+        graph_data = get_graph_json(student_id, target_ccss)
 
-        with torch.no_grad():
-            output = model(sequence)
-            prob = sigmoid(output[-1]).item()
-            pred = int(prob > 0.5)
 
         return jsonify({
-            "student_id": student_id,
-            "target_ccss": target_ccss,
-            "dok": dok,
-            "readiness_score": round(prob, 4),
-            "ready": bool(pred),
-            "timeline_img": meta["timeline_img"],
-            "graph_img": meta["graph_img"]
+            "readiness": int(prediction),
+            "probability": float(probability),
+            "graph": graph_data
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True, port=5050)
+
