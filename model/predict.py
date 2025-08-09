@@ -54,7 +54,7 @@ def run_inference(student_id, target_ccss, normalized_dok):
         logits = model(graph_sequence)
         if isinstance(logits, torch.Tensor):
             prob = torch.sigmoid(logits[-1]).item()
-            pred = int(prob >= 0.5)
+            pred = int(prob >= 0.7)
         else:
             raise RuntimeError("Model output not tensor")
 
