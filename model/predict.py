@@ -3,6 +3,12 @@ import json
 from functools import lru_cache
 import torch
 from model.load_model import load_trained_model
+from functools import lru_cache
+from model.cache_loader import load_subgraph
+
+@lru_cache(maxsize=256)
+def _load_subgraph(code: str):
+    return load_subgraph(code)
 
 # === Paths (use absolute paths to be safe on Render) ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # model/
@@ -32,7 +38,7 @@ def _load_subgraph(code: str):
     if not os.path.isfile(path):
         return None
     # Force CPU deserialisation to avoid CUDA context lookups on Render free tier
-    return torch.load(path, map_location="cpu", weights_only=False)
+    return _load_subgraph(path, map_location="cpu", weights_only=False)
 
 def run_inference(student_id: str, target_ccss: str, normalized_dok: int):
     # --- Validate inputs early (so Flask can return 400 instead of 502) ---

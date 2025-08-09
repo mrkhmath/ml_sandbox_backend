@@ -1,6 +1,12 @@
 import os
 import torch
 import json
+from functools import lru_cache
+from model.cache_loader import load_subgraph
+
+@lru_cache(maxsize=256)
+def _load_subgraph(code: str):
+    return load_subgraph(code)
 
 # Paths (absolute)
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))  # this file's dir
@@ -19,7 +25,7 @@ def get_graph_json(student_id, target_ccss):
         raise FileNotFoundError(f"{target_ccss}.pt not found")
 
     # Force CPU deserialisation; avoid scalar squeeze trap
-    data = torch.load(pt_path, map_location="cpu", weights_only=False)
+    data = _load_subgraph(pt_path, map_location="cpu", weights_only=False)
 
     code_strs = data.code_strs
     edge_index = data.edge_index  # [2, E] tensor
