@@ -4,5 +4,5 @@ gunicorn
 
 torch
 torch-geometric
-matplotlib
+
 networkx

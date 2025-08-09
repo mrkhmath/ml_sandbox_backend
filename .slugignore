@@ -1,0 +1,6 @@
+data/
+*.pt
+*.png
+notebooks/
+tests/
+.git/
