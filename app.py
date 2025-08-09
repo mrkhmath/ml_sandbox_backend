@@ -6,7 +6,7 @@ from utils.graph_json import get_graph_json
 
 
 app = Flask(__name__)
-CORS(app)  
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 @app.route("/predict_readiness", methods=["POST"])
 def predict():
