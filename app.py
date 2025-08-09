@@ -1,20 +1,21 @@
 from flask import Flask, request, jsonify
 from model.predict import run_inference
 from utils.graph_viz import render_graph_image
-from flask_cors import CORS
 from utils.graph_json import get_graph_json
+from flask_cors import CORS
 import os
 
 app = Flask(__name__)
 
-# ✅ Allow both local and deployed frontend origins
+# ✅ Define allowed frontend origins
 allowed_origins = [
     "http://localhost:3000",
-    "https://mathgraphexplorer.netlify.app",
-    "https://mathgraphexplorer.netlify.app/predict_readiness"
+    "https://mathgraphexplorer.netlify.app"
 ]
 
-CORS(app, resources={r"/predict_readiness": {"origins": allowed_origins}})
+# ✅ Apply CORS globally (optional: restrict to specific routes)
+CORS(app, supports_credentials=True)
+
 @app.route("/", methods=["GET", "OPTIONS"])
 def index():
     origin = request.headers.get("Origin")
@@ -28,8 +29,9 @@ def index():
 @app.route("/predict_readiness", methods=["POST", "OPTIONS"])
 def predict():
     origin = request.headers.get("Origin")
+
+    # ✅ Handle CORS preflight
     if request.method == "OPTIONS":
-        # ✅ Handle preflight request
         response = jsonify({"status": "CORS preflight passed"})
         if origin in allowed_origins:
             response.headers.add("Access-Control-Allow-Origin", origin)
@@ -37,6 +39,7 @@ def predict():
         response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
         return response, 200
 
+    # ✅ Parse and validate input
     data = request.get_json()
     student_id = data.get("student_id")
     target_ccss = data.get("target_ccss")
@@ -46,7 +49,10 @@ def predict():
         return jsonify({"error": "Missing required fields"}), 400
 
     try:
+        # ✅ Run model inference
         prediction, probability = run_inference(student_id, target_ccss, normalized_dok)
+
+        # ✅ Generate graph data
         graph_data = get_graph_json(student_id, target_ccss)
 
         response = jsonify({
@@ -59,8 +65,9 @@ def predict():
         return response
 
     except Exception as e:
+        print(f"Error in /predict_readiness: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # fallback for local dev
+    port = int(os.environ.get("PORT", 5000))  # ✅ Use PORT from environment for deployment
     app.run(host="0.0.0.0", port=port)
