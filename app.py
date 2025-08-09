@@ -10,14 +10,14 @@ app = Flask(__name__)
 # ✅ Define allowed frontend origins
 allowed_origins = [
     "http://localhost:3000",
-    "https://mathgraphexplorer.netlify.app"
+    "https://mathgraphexplorer.netlify.app/"
     "https://mathgraphexplorer.netlify.app/ml"
 ]
 
 # ✅ Apply CORS globally (optional: restrict to specific routes)
 CORS(app, supports_credentials=True)
 
-@app.route("/", methods=["GET", "OPTIONS"])
+@app.route("/", methods=["POST", "OPTIONS"])
 def index():
     origin = request.headers.get("Origin")
     response = jsonify({"status": "Backend is live"})
@@ -36,8 +36,8 @@ def predict():
         response = jsonify({"status": "CORS preflight passed"})
         if origin in allowed_origins:
             response.headers.add("Access-Control-Allow-Origin", origin)
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type")
-        response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+            response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+            response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
         return response, 200
 
     # ✅ Parse and validate input
