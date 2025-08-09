@@ -1,16 +1,6 @@
 import os
-import torch
-import json
 from functools import lru_cache
 from model.cache_loader import load_subgraph
-
-@lru_cache(maxsize=256)
-def _load_subgraph(code: str):
-    return load_subgraph(code)
-
-# Paths (absolute)
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))  # this file's dir
-ENRICHED_DIR = os.path.join(os.path.dirname(ROOT_DIR), "data", "enriched_subgraphs")
 
 EDGE_TYPE_MAP = {
     0: "IS_CHILD_OF",
@@ -19,29 +9,31 @@ EDGE_TYPE_MAP = {
     3: "INFERRED_ALIGNMENT",
 }
 
-def get_graph_json(student_id, target_ccss):
-    pt_path = os.path.join(ENRICHED_DIR, f"{target_ccss}.pt")
-    if not os.path.exists(pt_path):
-        raise FileNotFoundError(f"{target_ccss}.pt not found")
+@lru_cache(maxsize=256)
+def _load(code: str):
+    # cache per concept code; cache_loader handles download + torch.load(cpu)
+    return load_subgraph(code)
 
-    # Force CPU deserialisation; avoid scalar squeeze trap
-    data = _load_subgraph(pt_path, map_location="cpu", weights_only=False)
+def get_graph_json(student_id: str, target_ccss: str):
+    # Load the target concept subgraph (remote + cached)
+    data = _load(target_ccss)
 
     code_strs = data.code_strs
     edge_index = data.edge_index  # [2, E] tensor
     edge_types = (
-        data.edge_attr.view(-1).tolist() if hasattr(data, "edge_attr") and data.edge_attr is not None
+        data.edge_attr.view(-1).tolist()
+        if hasattr(data, "edge_attr") and data.edge_attr is not None
         else [0] * edge_index.size(1)
     )
-    scores = data.history_scores  # list[dict], one per node
-    grades = data.grade_levels
-    descriptions = data.descriptions
+    scores = getattr(data, "history_scores", None)
+    grades = getattr(data, "grade_levels", None)
+    descriptions = getattr(data, "descriptions", None)
 
     # Ensure target exists in this subgraph
     try:
         target_idx = code_strs.index(target_ccss)
     except ValueError:
-        raise ValueError(f"Target code {target_ccss} not found in subgraph file {target_ccss}.pt")
+        raise ValueError(f"Target code {target_ccss} not found in subgraph file.")
 
     # One-hop neighbourhood of target
     visible_idxs = {target_idx}
@@ -55,9 +47,9 @@ def get_graph_json(student_id, target_ccss):
         nodes.append({
             "id": code_strs[i],
             "label": code_strs[i],
-            "grade_levels": grades[i],
-            "description": descriptions[i],
-            "score": scores[i].get(student_id),
+            "grade_levels": grades[i] if grades is not None else [],
+            "description": descriptions[i] if descriptions is not None else "",
+            "score": (scores[i].get(student_id) if scores is not None else None),
         })
 
     # Edges (only among visible nodes)
