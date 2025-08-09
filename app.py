@@ -10,10 +10,20 @@ app = Flask(__name__)
 # ✅ Allow both local and deployed frontend origins
 allowed_origins = [
     "http://localhost:3000",
-    "https://mathgraphexplorer.netlify.app"
+    "https://mathgraphexplorer.netlify.app",
+    "https://mathgraphexplorer.netlify.app/predict_readiness"
 ]
 
 CORS(app, resources={r"/predict_readiness": {"origins": allowed_origins}})
+@app.route("/", methods=["GET", "OPTIONS"])
+def index():
+    origin = request.headers.get("Origin")
+    response = jsonify({"status": "Backend is live"})
+    if origin in allowed_origins:
+        response.headers.add("Access-Control-Allow-Origin", origin)
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+        response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+    return response
 
 @app.route("/predict_readiness", methods=["POST", "OPTIONS"])
 def predict():
