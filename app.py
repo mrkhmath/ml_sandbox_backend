@@ -11,6 +11,7 @@ app = Flask(__name__)
 allowed_origins = [
     "http://localhost:3000",
     "https://mathgraphexplorer.netlify.app"
+    "https://mathgraphexplorer.netlify.app/ml"
 ]
 
 # ✅ Apply CORS globally (optional: restrict to specific routes)
