@@ -31,7 +31,7 @@ def run_inference(student_id, target_ccss, normalized_dok):
         if not os.path.exists(pt_path):
             continue
 
-        data = torch.load(pt_path)
+        data = torch.load(pt_path, weights_only=False)
         step = {
             "graph": data,
             "dok": torch.tensor([dok], dtype=torch.long)
