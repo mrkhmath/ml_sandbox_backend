@@ -76,7 +76,8 @@ def ensure_local(code: str):
         tmp = local + ".part"
         print(f"[DL] {code} -> {url}", flush=True)
 
-        with _dl_semaphore:  # <= limit parallel downloads
+        _dl_semaphore.acquire()
+        try:
             # simple retry/backoff
             delay = 0.8
             for attempt in range(3):
@@ -91,7 +92,8 @@ def ensure_local(code: str):
 
                         with open(tmp, "wb") as f:
                             for chunk in r.iter_content(1024 * 1024):
-                                if chunk: f.write(chunk)
+                                if chunk:
+                                    f.write(chunk)
                     os.replace(tmp, local)
                     break
                 except Exception as e:
@@ -99,6 +101,8 @@ def ensure_local(code: str):
                         raise
                     time.sleep(delay)
                     delay *= 1.8
+        finally:
+            _dl_semaphore.release()
 
         try: os.utime(local, None)
         except: pass
