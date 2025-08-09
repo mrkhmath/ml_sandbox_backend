@@ -80,7 +80,7 @@ def create_app():
 
     return app
 
-# Gunicorn (Render): --workers 1 --threads 4  (set in Start Command)
+
 # e.g. gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --threads 4 --access-logfile - --error-logfile -
 app = create_app()
 

@@ -1,8 +1,10 @@
-flask==2.2.5
-flask-cors==3.0.10
-gunicorn
+--extra-index-url https://download.pytorch.org/whl/cpu
 
-torch
-torch-geometric
+Flask==2.2.5
+Flask-Cors==3.0.10
+gunicorn==23.0.0
 
-networkx
+torch==2.8.0          # will pull CPU wheel (no CUDA)
+torch-geometric==2.6.1
+networkx==3.5
+requests==2.32.4
