@@ -1,67 +1,69 @@
 # app.py
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 from model.predict import run_inference
 from utils.graph_json import get_graph_json
 
-def create_app() -> Flask:
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://mathgraphexplorer.netlify.app",
+]
+
+def create_app():
     app = Flask(__name__)
 
-    # --- CORS configuration ---
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "https://mathgraphexplorer.netlify.app",
-    ]
-
-    # Let Flask-CORS handle preflights and responses
+    # Primary CORS (covers GET/POST/OPTIONS)
     CORS(
         app,
-        resources={r"/*": {"origins": ALLOWED_ORIGINS}},
-        supports_credentials=False,  # flip to True only if you use cookies/auth
+        resources={r"/*": {
+            "origins": ALLOWED_ORIGINS,
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type"],
+            "supports_credentials": False
+        }},
     )
 
-    # Safety net to ensure errors also include ACAO
+    # Safety net: ensure ACAO on all responses (incl. errors)
     @app.after_request
     def add_cors_headers(resp):
         origin = request.headers.get("Origin")
         if origin in ALLOWED_ORIGINS:
             resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Vary"] = "Origin"
         return resp
 
-    # --- Health & diagnostics ---
+    # Health
     @app.route("/", methods=["GET"])
     def index():
         return jsonify({"status": "Backend is live"}), 200
 
-    @app.route("/_version", methods=["GET"])
-    def version():
-        return jsonify({
-            "app": "srpm-backend",
-            "env": os.environ.get("RENDER_SERVICE_NAME", "local"),
-            "commit": os.environ.get("RENDER_GIT_COMMIT", "unknown"),
-        }), 200
+    # (Optional but robust) explicit preflight for this route
+    @app.route("/predict_readiness", methods=["OPTIONS"])
+    def predict_preflight():
+        resp = make_response("", 204)
+        origin = request.headers.get("Origin")
+        if origin in ALLOWED_ORIGINS:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Vary"] = "Origin"
+            resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
 
-    # --- Main inference endpoint ---
+    # Inference
     @app.route("/predict_readiness", methods=["POST"])
     def predict():
-        # Parse JSON safely
         data = request.get_json(silent=True) or {}
         student_id = data.get("student_id")
         target_ccss = data.get("target_ccss")
         normalized_dok = data.get("normalized_dok")
 
-        # Basic validation
         if student_id is None or target_ccss is None or normalized_dok is None:
             return jsonify({"error": "Missing required fields"}), 400
 
         try:
-            # Run model inference (predict.py handles caching/CPU)
             prediction, probability = run_inference(student_id, target_ccss, normalized_dok)
-
-            # Build graph payload for the UI
-            graph_data = get_graph_json(student_id, target_ccss)  # must return {"nodes": [...], "links": [...]}
-
+            graph_data = get_graph_json(student_id, target_ccss)  # should return {"nodes": [...], "links": [...]}
             return jsonify({
                 "readiness": int(prediction),
                 "probability": float(probability),
@@ -69,14 +71,15 @@ def create_app() -> Flask:
             }), 200
 
         except ValueError as ve:
-            # Invalid inputs or missing resources -> 400
+            # Bad inputs / missing resources
             return jsonify({"error": str(ve)}), 400
+
         except Exception as e:
-            # Log server-side for debugging; return generic message to client
-            print(f"[ERROR] /predict_readiness failed: {e}")
+            # Minimal log on server; generic message to client
+            print(f"[ERROR] /predict_readiness failed: {e}", flush=True)
             return jsonify({"error": "Internal server error"}), 500
 
-    # Optional: JSON-only error handlers (keeps responses consistent)
+    # Consistent JSON errors
     @app.errorhandler(404)
     def not_found(_):
         return jsonify({"error": "Not found"}), 404
@@ -88,10 +91,10 @@ def create_app() -> Flask:
     return app
 
 
-# Gunicorn entrypoint: `gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300`
+# Gunicorn entrypoint:
+# gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --threads 4 --access-logfile - --error-logfile -
 app = create_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    # Flask dev server (for local dev only). On Render, use Gunicorn as above.
     app.run(host="0.0.0.0", port=port, debug=False)
