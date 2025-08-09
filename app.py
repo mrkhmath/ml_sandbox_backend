@@ -1,8 +1,11 @@
 # app.py
 import os
+os.environ.setdefault("PYTORCH_NO_CUDA", "1")            # keep CPU-only on Render
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
-from model.predict import run_inference
+from model.predict import run_inference   # should load model once, CPU, cached subgraphs
 from utils.graph_json import get_graph_json
 
 ALLOWED_ORIGINS = [
@@ -11,68 +14,76 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
-app = Flask(__name__)
+def create_app():
+    app = Flask(__name__)
 
-CORS(app, resources={r"/predict_readiness": {
-    "origins": ALLOWED_ORIGINS,
-    "methods": ["POST", "OPTIONS"],
-    "allow_headers": ["Content-Type"],
-}})
+    # CORS (route-scoped + safety net)
+    CORS(app, resources={
+        r"/predict_readiness": {
+            "origins": ALLOWED_ORIGINS,
+            "methods": ["POST", "OPTIONS"],
+            "allow_headers": ["Content-Type"],
+        },
+        r"/": {"origins": "*"}
+    })
 
-@app.after_request
-def add_cors(resp):
-    origin = request.headers.get("Origin")
-    if origin in ALLOWED_ORIGINS:
-        resp.headers["Access-Control-Allow-Origin"] = origin
-        resp.headers["Vary"] = "Origin"
-        resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    return resp
+    @app.after_request
+    def add_cors(resp):
+        origin = request.headers.get("Origin")
+        if origin in ALLOWED_ORIGINS:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Vary"] = "Origin"
+            resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
 
-@app.route("/predict_readiness", methods=["OPTIONS"])
-def preflight():
-    return ("", 204)
+    @app.route("/", methods=["GET"])
+    def index():
+        return jsonify({"status": "Backend is live"}), 200
 
-# Inference
-@app.route("/predict_readiness", methods=["POST"])
-def predict():
-    data = request.get_json(silent=True) or {}
-    student_id = data.get("student_id")
-    target_ccss = data.get("target_ccss")
-    normalized_dok = data.get("normalized_dok")
+    @app.route("/predict_readiness", methods=["OPTIONS"])
+    def preflight():
+        return make_response("", 204)
 
-    if student_id is None or target_ccss is None or normalized_dok is None:
-        return jsonify({"error": "Missing required fields"}), 400
+    @app.route("/predict_readiness", methods=["POST"])
+    def predict():
+        data = request.get_json(silent=True) or {}
+        student_id = data.get("student_id")
+        target_ccss = data.get("target_ccss")
+        normalized_dok = data.get("normalized_dok")
 
-    try:
-        prediction, probability = run_inference(student_id, target_ccss, normalized_dok)
-        graph_data = get_graph_json(student_id, target_ccss)  # should return {"nodes": [...], "links": [...]}
-        return jsonify({
-            "readiness": int(prediction),
-            "probability": float(probability),
-            "graph": graph_data
-        }), 200
+        if student_id is None or target_ccss is None or normalized_dok is None:
+            return jsonify({"error": "Missing required fields"}), 400
 
-    except ValueError as ve:
-        # Bad inputs / missing resources
-        return jsonify({"error": str(ve)}), 400
+        try:
+            prediction, probability = run_inference(student_id, target_ccss, normalized_dok)
+            graph_data = get_graph_json(student_id, target_ccss)  # {"nodes":[...], "links":[...]}
+            return jsonify({
+                "readiness": int(prediction),
+                "probability": float(probability),
+                "graph": graph_data
+            }), 200
 
-    except Exception as e:
-        # Minimal log on server; generic message to client
-        print(f"[ERROR] /predict_readiness failed: {e}", flush=True)
-        return jsonify({"error": "Internal server error"}), 500
+        except ValueError as ve:
+            return jsonify({"error": str(ve)}), 400
+        except Exception as e:
+            print(f"[ERROR] /predict_readiness: {e}", flush=True)
+            return jsonify({"error": "Internal server error"}), 500
 
-# Consistent JSON errors
-@app.errorhandler(404)
-def not_found(_):
-    return jsonify({"error": "Not found"}), 404
+    @app.errorhandler(404)
+    def not_found(_):
+        return jsonify({"error": "Not found"}), 404
 
-@app.errorhandler(405)
-def method_not_allowed(_):
-    return jsonify({"error": "Method not allowed"}), 405
+    @app.errorhandler(405)
+    def method_not_allowed(_):
+        return jsonify({"error": "Method not allowed"}), 405
 
-# Gunicorn entrypoint:
-# gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --threads 4 --access-logfile - --error-logfile -
+    return app
+
+# Gunicorn (Render): --workers 1 --threads 4  (set in Start Command)
+# e.g. gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --threads 4 --access-logfile - --error-logfile -
+app = create_app()
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
